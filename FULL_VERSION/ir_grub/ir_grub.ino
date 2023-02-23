@@ -1,81 +1,102 @@
+#include <LiquidCrystal.h>
+#include <GyverButton.h>
 #include <IRremote.hpp>
 
-#define btn A2
+#define MAX_NUMBER_SAVE_PACKETS 5 // Увеличь число, если требуется хранить большее кол-во пакетов
+ 
+// Для Экрана
+#define RS 13
+#define EN 12
+#define D4 11
+#define D5 10
+#define D6 9
+#define D7 8
+
+LiquidCrystal lcd(RS, EN, D4, D5, D6, D7);
+
+GButton btnSend(A2);
+GButton btnSetIrPacket(A3);
+
+IRData packets[MAX_NUMBER_SAVE_PACKETS];
+
+byte numberWritePacket = 0;
+byte currentPacket = 0;
+bool isSend = false;
+bool modWrite = true;
 
 void setup() {
-  pinMode(btn, INPUT_PULLUP);
-  
   IrReceiver.enableIRIn();
   IrReceiver.begin(A0);
   IrSender.begin(A1);
 
-// Разкомментируй, если нужен вывод поступающих на датчик пакетов
-//  Serial.begin(9600);
+  lcd.begin(16, 2);
+}
+
+void lcdWrite(String text, byte colm, boolean mod, byte arg=0) {
+  lcd.setCursor(0, colm);
+  if (mod) {
+    lcd.print(text);lcd.print(arg);
+  } else {
+    lcd.print(text);
+  }
 }
 
 void loop() {
-  int val = !digitalRead(btn);
+  btnSend.tick();
+  btnSetIrPacket.tick();
 
-  if (val == HIGH) {
+  if (btnSend.isPress() && packets[currentPacket].protocol != 0) {
     IrSender.enableIROut(38);
-// Разкомментируй, если нужен вывод поступающих на датчик пакетов
-//    Serial.println("Send IR packet!");
-//    Serial.println("=========INFO============");
+    isSend = true;
 
-    sendIRPacket(&IrReceiver.decodedIRData, 1);
-    delay(100);
+    sendIRPacket(&packets[currentPacket], 1);
+
+    lcd.clear();
+    lcdWrite("Send IR Packet!", 0, false);
+    lcdWrite(getProtocolString(packets[currentPacket].protocol), 1, false);
+    delay(40);
   }
 
+  if (btnSetIrPacket.isPress()) {
+    currentPacket++; 
+    if (currentPacket > MAX_NUMBER_SAVE_PACKETS-1) {
+      currentPacket = 0;
+    }
+
+    lcd.clear();
+    lcdWrite(getProtocolString(packets[currentPacket].protocol), 0, false);
+    lcdWrite("Packet: ", 1, true, currentPacket);
+  } 
+  if (btnSetIrPacket.isHolded()) {
+    modWrite = !modWrite;
+    lcd.clear();
+    lcdWrite("Mod Write: ", 1, true, modWrite ? 1 : 0);
+  }
+  
   if (IrReceiver.decode()) {
-// Разкомментируй, если нужен вывод поступающих на датчик пакетов
-//    debug();
-    delay(100);
+    delay(400);
+
+    if (modWrite && !isSend) {
+      lcd.clear();
+      lcdWrite(getProtocolString(IrReceiver.decodedIRData.protocol), 0, false);
+      lcdWrite("Write: ", 1, true, numberWritePacket);
+      
+      packets[numberWritePacket] = IrReceiver.decodedIRData;
+      numberWritePacket++;
+        
+      if (numberWritePacket > MAX_NUMBER_SAVE_PACKETS-1) {
+        numberWritePacket = 0;
+      }
+    } else {
+      isSend = false;
+    }
 
     IrReceiver.resume();
     IrReceiver.enableIRIn();
   }
 }
 
-// Разкомментируй, если нужен вывод поступающих на датчик пакетов
-//void debug() {
-//  Serial.print("Protocol String: ");
-//  Serial.println(getProtocolString(IrReceiver.decodedIRData.protocol));
-//  
-//  Serial.print("Protocol Int: ");
-//  Serial.println(IrReceiver.decodedIRData.protocol);
-//  
-//  Serial.print("Command: ");
-//  Serial.println(IrReceiver.decodedIRData.command, HEX);
-//  
-//  Serial.print("Address: ");
-//  Serial.println(IrReceiver.decodedIRData.address, HEX);
-//  
-//  Serial.print("Raw-Data: ");
-//  Serial.println(IrReceiver.decodedIRData.decodedRawData, HEX);
-//  
-//  Serial.print("Receive Data: "); 
-//  IrReceiver.printIRResultShort(&Serial, &IrReceiver.decodedIRData, true);
-//  IrReceiver.compensateAndPrintIRResultAsCArray(&Serial, true);
-//  
-//  IrReceiver.printIRSendUsage(&Serial);
-//  
-//  Serial.println("===================================");
-//}
-
-//void sendProntoPacket(int_fast8_t aNumberOfRepeats) {
-//  String tPronto;
-//  IrReceiver.compensateAndStorePronto(&tPronto);
-//           
-//  int count = tPronto.length();
-//  char rawData[count]; 
-//  for (int i = 0; i < count; i++) {
-//    rawData[i] = tPronto[i];
-//  }
-//
-//  IrSender.sendPronto(rawData, aNumberOfRepeats);
-//}
-
-void sendRawPacket(uint16_t aAddress, uint16_t aCommand, 
+void sendPulseDistancePacket(uint16_t aAddress, uint16_t aCommand, 
     uint16_t aExtra, uint16_t aNumberOfBits, uint32_t aDecodedRawData
 ) {
   unsigned int tHeaderMarkMicros = (aExtra >> 8) * MICROS_PER_TICK;
@@ -131,7 +152,7 @@ void sendIRPacket(IRData *aIRSendData, int_fast8_t aNumberOfRepeats) {
      
      switch (tProtocol) {
         case PULSE_DISTANCE:
-           sendRawPacket(tAddress, tCommand, aIRSendData->extra, 
+           sendPulseDistancePacket(tAddress, tCommand, aIRSendData->extra, 
               tNumberOfBits, tDecodedRawData);
            break;
         case NEC:
