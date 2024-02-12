@@ -19,15 +19,6 @@ byte currentPacket = 0;
 bool isSend = false;
 bool modWrite = true;
 
-void setup() {
-  IrReceiver.enableIRIn();
-  IrReceiver.begin(A0);
-  IrSender.begin(A1);
-
-  lcd.begin();
-  lcd.backlight();
-}
-
 void lcdWrite(String text, byte colm, boolean mod, byte arg=0) {
   lcd.setCursor(0, colm);
   if (mod) {
@@ -35,6 +26,18 @@ void lcdWrite(String text, byte colm, boolean mod, byte arg=0) {
   } else {
     lcd.print(text);
   }
+}
+
+void setup() {
+  IrReceiver.enableIRIn();
+  IrReceiver.begin(A0);
+  IrSender.begin(A1);
+
+  lcd.begin();
+  lcd.backlight();
+
+  lcdWrite("Welcome to", 0, false);
+  lcdWrite("IRGrub!", 1, false);
 }
 
 void loop() {
@@ -134,6 +137,28 @@ void sendPulseDistancePacket(uint16_t aAddress, uint16_t aCommand,
     }
 }
 
+void sendRawPacket(irparams_struct *results) {
+    Serial.println("Received unknown code, saving as raw");
+    int codeLen = results->rawlen - 1;
+    unsigned int rawCodes[RAWBUF];
+
+    for (int i = 1; i <= codeLen; i++) {
+      if (i % 2) {
+        rawCodes[i - 1] = results->rawbuf[i]*USECPERTICK - MARK_EXCESS;
+        Serial.print(" m");
+      } 
+      else {
+        rawCodes[i - 1] = results->rawbuf[i]*USECPERTICK + MARK_EXCESS;
+        Serial.print(" s");
+      }
+      Serial.print(rawCodes[i - 1], DEC);
+    }
+
+    Serial.println("");
+
+    IrSender.sendRaw(rawCodes, codeLen, 38);
+}
+
 void sendIRPacket(IRData *aIRSendData, int_fast8_t aNumberOfRepeats) {
      decode_type_t tProtocol = aIRSendData->protocol;
      uint16_t tAddress = aIRSendData->address;
@@ -147,9 +172,11 @@ void sendIRPacket(IRData *aIRSendData, int_fast8_t aNumberOfRepeats) {
      }
      
      switch (tProtocol) {
+        case UNKNOWN:
         case PULSE_DISTANCE:
-           sendPulseDistancePacket(tAddress, tCommand, aIRSendData->extra, 
-              tNumberOfBits, tDecodedRawData);
+          //  sendPulseDistancePacket(tAddress, tCommand, aIRSendData->extra, 
+          //     tNumberOfBits, tDecodedRawData);
+           sendRawPacket(aIRSendData->rawDataPtr);
            break;
         case NEC:
            IrSender.sendNEC(tAddress, tCommand, aNumberOfRepeats);

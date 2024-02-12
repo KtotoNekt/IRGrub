@@ -24,14 +24,6 @@ byte currentPacket = 0;
 bool isSend = false;
 bool modWrite = true;
 
-void setup() {
-  IrReceiver.enableIRIn();
-  IrReceiver.begin(A0);
-  IrSender.begin(A1);
-
-  lcd.begin(16, 2);
-}
-
 void lcdWrite(String text, byte colm, boolean mod, byte arg=0) {
   lcd.setCursor(0, colm);
   if (mod) {
@@ -39,6 +31,17 @@ void lcdWrite(String text, byte colm, boolean mod, byte arg=0) {
   } else {
     lcd.print(text);
   }
+}
+
+void setup() {
+  IrReceiver.enableIRIn();
+  IrReceiver.begin(A0);
+  IrSender.begin(A1);
+
+  lcd.begin(16, 2);
+  
+  lcdWrite("Welcome to", 0, false);
+  lcdWrite("IRGrub!", 1, false);
 }
 
 void loop() {
